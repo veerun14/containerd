@@ -46,6 +46,8 @@ type Image struct {
 	Size int64
 	// ImageSpec is the oci image structure which describes basic information about the image.
 	ImageSpec imagespec.Image
+	// TODO: Comment here.
+	ArgsEscaped bool
 }
 
 // Store stores all images.
@@ -143,12 +145,19 @@ func getImage(ctx context.Context, i containerd.Image) (*Image, error) {
 		return nil, fmt.Errorf("unmarshal image config %s: %w", rb, err)
 	}
 
+	// TODO: Comment here.
+	var configExt struct{ Config struct{ ArgsEscaped bool } }
+	if err := json.Unmarshal(rb, &configExt); err != nil {
+		return nil, fmt.Errorf("unmarshal image config extension %s: %w", rb, err)
+	}
+
 	return &Image{
-		ID:         id,
-		References: []string{i.Name()},
-		ChainID:    chainID.String(),
-		Size:       size,
-		ImageSpec:  ociimage,
+		ID:          id,
+		References:  []string{i.Name()},
+		ChainID:     chainID.String(),
+		Size:        size,
+		ImageSpec:   ociimage,
+		ArgsEscaped: configExt.Config.ArgsEscaped,
 	}, nil
 }
 

@@ -51,25 +51,48 @@ func WithoutRoot(ctx context.Context, client oci.Client, c *containers.Container
 	return nil
 }
 
+func getArgs(imgEntrypoint []string, imgCmd []string, ctrEntrypoint []string, ctrCmd []string) ([]string, bool, error) {
+	// firstArgFromImg is a flag that is returned to indicate that the first arg in the slice comes from either the
+	// image Entrypoint or Cmd. If the first arg instead comes from the container config (e.g. overriding the image values),
+	// it should be false.
+	// Essentially this means firstArgFromImg should be true iff:
+	// - Container entrypoint is nil and image entrypoint is not empty
+	// - Container entrypoint is nil and image entrypoint is empty and container cmd is empty and image cmd is not empty
+	// - Container entrypoint is empty and container cmd is empty and image cmd is not empty
+	// TODO: Context on why this is needed (point to general ArgsEscaped comment if it exists elsewhere)
+	var firstArgFromImg bool
+	entrypoint, cmd := ctrEntrypoint, ctrCmd
+	// The following logic is migrated from https://github.com/moby/moby/blob/master/daemon/commit.go
+	// TODO(random-liu): Clearly define the commands overwrite behavior.
+	if len(entrypoint) == 0 {
+		// Copy array to avoid data race.
+		if len(cmd) == 0 {
+			cmd = append([]string{}, imgCmd...)
+			if len(imgCmd) > 0 {
+				firstArgFromImg = true
+			}
+		}
+		if entrypoint == nil {
+			entrypoint = append([]string{}, imgEntrypoint...)
+			if len(imgEntrypoint) > 0 || len(ctrCmd) == 0 {
+				firstArgFromImg = true
+			}
+		}
+	}
+	if len(entrypoint) == 0 && len(cmd) == 0 {
+		return nil, false, errors.New("no command specified")
+	}
+	return append(entrypoint, cmd...), firstArgFromImg, nil
+}
+
 // WithProcessArgs sets the process args on the spec based on the image and runtime config
 func WithProcessArgs(config *runtime.ContainerConfig, image *imagespec.ImageConfig) oci.SpecOpts {
 	return func(ctx context.Context, client oci.Client, c *containers.Container, s *runtimespec.Spec) (err error) {
-		command, args := config.GetCommand(), config.GetArgs()
-		// The following logic is migrated from https://github.com/moby/moby/blob/master/daemon/commit.go
-		// TODO(random-liu): Clearly define the commands overwrite behavior.
-		if len(command) == 0 {
-			// Copy array to avoid data race.
-			if len(args) == 0 {
-				args = append([]string{}, image.Cmd...)
-			}
-			if command == nil {
-				command = append([]string{}, image.Entrypoint...)
-			}
+		args, _, err := getArgs(image.Entrypoint, image.Cmd, config.GetCommand(), config.GetArgs())
+		if err != nil {
+			return err
 		}
-		if len(command) == 0 && len(args) == 0 {
-			return errors.New("no command specified")
-		}
-		return oci.WithProcessArgs(append(command, args...)...)(ctx, client, c, s)
+		return oci.WithProcessArgs(args...)(ctx, client, c, s)
 	}
 }
 

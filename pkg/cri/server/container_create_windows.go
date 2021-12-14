@@ -27,6 +27,7 @@ import (
 	"github.com/containerd/containerd/pkg/cri/annotations"
 	"github.com/containerd/containerd/pkg/cri/config"
 	customopts "github.com/containerd/containerd/pkg/cri/opts"
+	imagestore "github.com/containerd/containerd/pkg/cri/store/image"
 )
 
 // No container mounts for windows.
@@ -43,12 +44,16 @@ func (c *criService) containerSpec(
 	imageName string,
 	config *runtime.ContainerConfig,
 	sandboxConfig *runtime.PodSandboxConfig,
-	imageConfig *imagespec.ImageConfig,
+	image imagestore.Image,
 	extraMounts []*runtime.Mount,
 	ociRuntime config.Runtime,
 ) (*runtimespec.Spec, error) {
-	specOpts := []oci.SpecOpts{
-		customopts.WithProcessArgs(config, imageConfig),
+	imageConfig := &image.ImageSpec.Config
+	var specOpts []oci.SpecOpts
+	if image.ArgsEscaped {
+		specOpts = append(specOpts, customopts.WithProcessCommandLine(config, imageConfig, image.ArgsEscaped))
+	} else {
+		specOpts = append(specOpts, customopts.WithProcessArgs(config, imageConfig))
 	}
 	if config.GetWorkingDir() != "" {
 		specOpts = append(specOpts, oci.WithProcessCwd(config.GetWorkingDir()))

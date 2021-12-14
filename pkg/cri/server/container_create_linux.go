@@ -121,10 +121,11 @@ func (c *criService) containerSpec(
 	imageName string,
 	config *runtime.ContainerConfig,
 	sandboxConfig *runtime.PodSandboxConfig,
-	imageConfig *imagespec.ImageConfig,
+	image imagestore.Image,
 	extraMounts []*runtime.Mount,
 	ociRuntime config.Runtime,
 ) (_ *runtimespec.Spec, retErr error) {
+	imageConfig := &image.ImageSpec.Config
 	specOpts := []oci.SpecOpts{
 		oci.WithoutRunMount,
 	}
